@@ -3,89 +3,103 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Vice Meridian Heatwave</title>
-<style>
-  html, body { margin: 0; height: 100%; overflow: hidden; background: #0b0d12; font-family: system-ui, -apple-system, Segoe UI, sans-serif; }
-  #game { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
-  #game::after { content: ''; position: fixed; inset: 0; background: radial-gradient(circle at 50% 30%, rgba(255,217,58,0.06), transparent 55%); pointer-events: none; }
-
-  /* HUD */
-  #ui { position: fixed; inset: 0; pointer-events: none; display: flex; flex-direction: column; justify-content: space-between; }
-  #hud { pointer-events: auto; align-self: flex-start; margin: 14px; display: flex; gap: 12px; align-items: flex-end; background: rgba(10, 14, 22, 0.62); border: 1px solid #2a3340; border-radius: 10px; padding: 8px 12px; backdrop-filter: blur(4px); }
-  #hud > div { color: #eef1f5; font-size: 13px; line-height: 1.3; white-space: nowrap; }
-  #readouts { display: flex; flex-direction: column; gap: 4px; }
-  #speed { font-size: 17px; font-weight: 700; letter-spacing: 0.06em; color: #4cff77; }
-  #stars { letter-spacing: 5px; font-size: 17px; }
-  #money { color: #ffd93a; font-weight: 600; }
-  #minimap { width: 132px; height: 132px; background: #14171f; border: 1px solid #2a3340; border-radius: 6px; box-shadow: 0 0 20px rgba(0,0,0,0.6); }
-  #objective { pointer-events: none; align-self: center; margin: 12px; max-width: 620px; text-align: center; font-size: 12.5px; color: #dfe5ec; background: rgba(10, 14, 22, 0.55); border: 1px solid #2a3340; border-radius: 8px; padding: 6px 14px; backdrop-filter: blur(3px); }
-
-  #crosshair { position: fixed; left: 50%; top: 50%; width: 12px; height: 12px; border: 1.5px solid rgba(238,245,255,0.72); border-radius: 50%; transform: translate(-50%, -50%); pointer-events: none; z-index: 5; }
-  #crosshair::after { content: ''; position: absolute; left: 50%; top: 50%; width: 2px; height: 2px; background: rgba(238,245,255,0.92); border-radius: 50%; transform: translate(-50%, -50%); }
-
-  /* Full-screen overlays */
-  .overlay { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; flex-direction: column; background: rgba(6, 8, 12, 0.85); z-index: 20; color: #eef1f5; font-size: 15px; }
-  .overlay h1 { margin: 0 0 8px 0; font-size: 34px; letter-spacing: 0.12em; color: #ffd93a; text-shadow: 0 0 14px rgba(255,217,58,0.35); }
-  .overlay p { margin: 0 0 22px 0; color: #9aa3ae; max-width: 420px; text-align: center; line-height: 1.6; }
-  .panel { background: rgba(16, 22, 34, 0.9); border: 1px solid #2a3340; border-radius: 12px; padding: 26px 34px; min-width: 320px; text-align: center; box-shadow: 0 0 40px rgba(0,0,0,0.7); }
-  .panel h2 { margin: 0 0 16px 0; font-size: 19px; color: #ffd93a; }
-  button { margin: 6px 8px; padding: 10px 22px; font-size: 14px; border: 1px solid #3a4758; border-radius: 8px; background: #1c2838; color: #eef1f5; cursor: pointer; }
-  button:hover { border-color: #ffd93a; color: #ffd93a; }
-  button:active { background: #2a3a4d; }
-  button.primary { border-color: #ffd93a; color: #ffd93a; }
-  button.primary:hover { background: rgba(255,217,58,0.15); }
-  .keys { margin-top: 10px; color: #6b7485; font-size: 12px; }
-
-  #msg { position: fixed; top: 110px; left: 50%; transform: translateX(-50%); display: none; z-index: 25; }
-  #msg .bubble { background: rgba(16, 22, 34, 0.9); border: 1px solid #ffd93a; color: #ffd93a; padding: 8px 16px; border-radius: 20px; font-size: 13px; white-space: nowrap; box-shadow: 0 0 20px rgba(255,217,58,0.25); }
-</style>
+<meta name="theme-color" content="#07131d">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%2307131d'/%3E%3Cpath d='M6 7l10 19L26 7h-6l-4 10-4-10z' fill='%2339f3ed'/%3E%3C/svg%3E">
+<title>Vice Meridian: Heatwave</title>
+<link rel="stylesheet" href="./style.css">
 </head>
 <body>
-<canvas id="game" aria-label="Vice Meridian Heatwave: drive, fight, survive in an open city"></canvas>
-<div id="crosshair"></div>
-<div id="ui">
-  <div id="objective">Start a new game from the title screen.</div>
-  <div id="hud">
-    <canvas id="minimap" width="132" height="132"></canvas>
-    <div id="readouts">
-      <div id="speed">0 km/h</div>
-      <div id="stars">&#9734;&#9734;&#9734;&#9734;&#9734;</div>
-      <div id="money">$400</div>
+<canvas id="game" aria-label="Vice Meridian open-world city. WASD to move, E to enter cars, F to fire."></canvas>
+<div id="cinema-bars" aria-hidden="true"></div>
+<div id="grain" aria-hidden="true"></div>
+<div id="damage-vignette" aria-hidden="true"></div>
+
+<main id="hud" class="hidden" aria-label="Game status">
+  <section id="location-card">
+    <div class="eyebrow"><span class="live-dot"></span> VICE MERIDIAN <span class="edition">HEATWAVE</span></div>
+    <div id="district">OCEAN DRIVE</div>
+    <div id="clock">21:42 <span>29°C</span></div>
+  </section>
+
+  <section id="wanted-panel" aria-label="Wanted level">
+    <div id="wanted-label">KEEP IT COOL</div>
+    <div id="wanted-stars"><span>★</span><span>★</span><span>★</span><span>★</span><span>★</span></div>
+    <div id="heat-track"><i id="heat-fill"></i></div>
+  </section>
+
+  <section id="mission-card">
+    <div class="eyebrow" id="mission-kicker">STORY 01 / 05</div>
+    <h2 id="mission-title">A KEY TO THE CITY</h2>
+    <p id="mission-description">Meet Roxy outside the Palmetto safehouse.</p>
+    <div id="mission-objective"><span class="diamond"></span><span id="objective-text">Reach the safehouse marker</span></div>
+    <div id="mission-distance">42 M</div>
+  </section>
+
+  <section id="minimap-panel" aria-label="City minimap">
+    <canvas id="minimap" width="256" height="256"></canvas>
+    <div class="map-compass">N</div>
+    <div id="map-caption"><span id="map-zone">PALMETTO</span><span id="map-coords">06 / 145</span></div>
+  </section>
+
+  <section id="vitals">
+    <div class="vital-row"><b>HP</b><div><i id="health-fill"></i></div><span id="health-value">100</span></div>
+    <div class="vital-row armor"><b>AR</b><div><i id="armor-fill"></i></div><span id="armor-value">50</span></div>
+  </section>
+
+  <section id="vehicle-hud">
+    <div id="vehicle-name">ON FOOT</div>
+    <div id="speed"><span id="speed-value">0</span><small>KM/H</small></div>
+    <div id="cash">$ <span id="cash-value">2,450</span></div>
+  </section>
+
+  <div id="crosshair" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+  <div id="interaction" class="hidden"><kbd>E</kbd><span>ENTER VEHICLE</span></div>
+  <div id="radio"><span class="radio-bars"><i></i><i></i><i></i><i></i></span> NIGHTWAVE <b>98.6</b><small id="radio-track">MIDNIGHT MIRAGE</small></div>
+  <div id="controls-hint">WASD MOVE <b>·</b> E VEHICLE <b>·</b> F FIRE <b>·</b> M MAP <b>·</b> ESC PAUSE</div>
+  <div id="toast" role="status" aria-live="polite"></div>
+  <div id="story-caption" class="hidden"><b id="speaker">ROXY</b><span id="caption-text"></span></div>
+</main>
+
+<section id="start-screen" class="overlay active" aria-label="Start menu">
+  <div class="start-top"><span>SUNSHINE. SPEED. CONSEQUENCES.</span><span>MERIDIAN CITY // 21:42</span></div>
+  <div class="start-content">
+    <div class="start-badge">AN OPEN-WORLD NEON CRIME STORY</div>
+    <h1><span>VICE</span> MERIDIAN</h1>
+    <div class="heatwave">HEATWAVE</div>
+    <p>One city. Five jobs. No clean exits.<br>Take Ocean Drive before it takes you.</p>
+    <div class="start-actions">
+      <button id="start-button" class="primary">ENTER MERIDIAN <span>→</span></button>
+      <button id="continue-button" class="secondary">CONTINUE SAVE</button>
     </div>
+    <div class="quick-controls"><span><kbd>WASD</kbd> MOVE / DRIVE</span><span><kbd>E</kbd> STEAL CAR</span><span><kbd>F</kbd> FIRE</span><span><kbd>M</kbd> CITY MAP</span></div>
   </div>
-  <div id="msg"><div class="bubble" id="briefing"></div></div>
-</div>
+  <div class="start-footer"><span>PROCEDURAL WEBGL · SYNTHESIZED AUDIO · LOCAL SAVE</span><span>HEADPHONES RECOMMENDED</span></div>
+</section>
 
-<div id="start" class="overlay">
-  <div class="panel">
-    <h1>Vice Meridian Heatwave</h1>
-    <p>Vice Meridian, 2026. A sun-soaked city of its own. Walk the streets, steal and drive cars, answer to the wanted level, take jobs and build your crew. Original city, characters and story.</p>
-    <button class="primary" id="btn-newgame">New game</button>
-    <button id="btn-loadgame">Load save</button>
-    <div class="keys">WASD drive or walk &bull; F enter/exit car &bull; Click shoot &bull; ESC pause</div>
+<section id="pause-screen" class="overlay menu-overlay" aria-label="Pause menu">
+  <div class="menu-panel">
+    <div class="eyebrow">MERIDIAN IS WAITING</div><h2>PAUSED</h2>
+    <button id="resume-button" class="primary">BACK TO THE STREET</button>
+    <button id="save-button">SAVE PROGRESS</button>
+    <button id="load-button">LOAD LAST SAVE</button>
+    <button id="sound-button">SOUND: ON</button>
+    <button id="restart-button">RESTART STORY</button>
+    <p>WASD move / drive · Shift sprint · Space handbrake<br>E enter or exit · F fire · M map · Mouse look</p>
   </div>
-</div>
+</section>
 
-<div id="pause" class="overlay">
-  <div class="panel">
-    <h2>Paused</h2>
-    <button class="primary" id="btn-resume">Resume</button>
-    <button id="btn-save">Save</button>
-    <button id="btn-load">Load</button>
-    <button id="btn-restart">Restart</button>
-    <button id="btn-title">Title screen</button>
+<section id="map-screen" class="overlay menu-overlay" aria-label="City map and story">
+  <div class="map-layout">
+    <div class="big-map-wrap"><canvas id="big-map" width="640" height="640"></canvas><div class="map-legend"><span class="you">YOU</span><span class="objective">OBJECTIVE</span><span class="safe">SAFEHOUSE</span></div></div>
+    <aside><div class="eyebrow">CITY OF SECOND CHANCES</div><h2>MERIDIAN</h2><p>From the art-deco strip of Ocean Drive to the shipping cranes at Port Meridian. Every block is open.</p><h3>ROXY'S JOBS</h3><ol id="story-list"></ol><button id="close-map-button" class="primary">CLOSE MAP <kbd>M</kbd></button></aside>
   </div>
-</div>
+</section>
 
-<div id="save" class="overlay">
-  <div class="panel">
-    <h2>Save</h2>
-    <button id="btn-save">Save here</button>
-    <button id="btn-load">Load save</button>
-    <button id="btn-resume">Back</button>
-  </div>
-</div>
+<section id="gameover-screen" class="overlay menu-overlay" aria-label="Wasted">
+  <div class="menu-panel"><div class="eyebrow">THE CITY ALWAYS COLLECTS</div><h2 class="wasted">WASTED</h2><p>Roxy pulled you out. The job is still on.</p><button id="respawn-button" class="primary">BACK TO PALMETTO</button></div>
+</section>
 
+<p id="status" role="status" aria-live="polite">Vice Meridian loading.</p>
 <script type="module" src="./src/main.js"></script>
 </body>
 </html>

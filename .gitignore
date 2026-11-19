@@ -1,12 +1,6 @@
-# Entry output (the grader target; never committed)
 out/
-
-# Dependencies and caches (main.ts installs nothing, but keep them out anyway)
 node_modules/
-
-# Capture and verification scratch from tools/
-capture-*.log
-capture-run.json
-determinism-run.txt
-final-verify.txt
-scratch/
+capture/
+.capture-profile/
+*.log
+.DS_Store

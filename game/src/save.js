@@ -1,29 +1,35 @@
-// Save slot: progress kept in this browser's localStorage. Never sends
-// anything anywhere. Returns null when storage is unavailable.
+import { DEFAULT_SAVE_VERSION } from './config.js';
 
-const KEY = 'vmh-save-v1';
-
-export function saveGame(data) {
+const KEY = 'vice-meridian-heatwave-v2';
+export function saveGame(game) {
+  const p = game.player.position;
+  const data = {
+    version: DEFAULT_SAVE_VERSION, seed: game.seed, tick: game.tick,
+    player: { x: p.x, z: p.z, health: game.player.health, armor: game.player.armor, cash: game.player.cash },
+    wanted: game.wanted, heat: game.heat, mission: game.missions.stage,
+    missionProgress: game.missions.progress, missionCount: game.missions.count,
+    muted: game.audio.muted, savedAt: new Date().toISOString(),
+  };
+  try { localStorage.setItem(KEY, JSON.stringify(data)); return true; }
+  catch { return false; }
+}
+export function loadGame(game) {
   try {
-    window.localStorage.setItem(KEY, JSON.stringify(data));
+    const data = JSON.parse(localStorage.getItem(KEY) || 'null');
+    if (!data || data.version !== DEFAULT_SAVE_VERSION || !data.player) return false;
+    game.player.position.set(data.player.x, 0, data.player.z);
+    game.player.health = data.player.health;
+    game.player.armor = data.player.armor;
+    game.player.cash = data.player.cash;
+    game.wanted = data.wanted;
+    game.heat = data.heat;
+    game.missions.restore(data);
+    game.audio.setMuted(Boolean(data.muted));
+    game.showToast('SAVE LOADED · WELCOME BACK TO MERIDIAN');
     return true;
-  } catch {
-    return false;
-  }
+  } catch { return false; }
 }
-
-export function loadGame() {
-  try {
-    const raw = window.localStorage.getItem(KEY);
-    if (!raw) return null;
-    const data = JSON.parse(raw);
-    if (typeof data.money !== 'number') return null;
-    return data;
-  } catch {
-    return null;
-  }
+export function hasSave() {
+  try { return Boolean(localStorage.getItem(KEY)); } catch { return false; }
 }
-
-export function defaultSave() {
-  return { money: 400, missionIndex: 0, missionStage: 'idle', completed: 0 };
-}
+export function clearSave() { try { localStorage.removeItem(KEY); } catch { /* Storage can be disabled. */ } }

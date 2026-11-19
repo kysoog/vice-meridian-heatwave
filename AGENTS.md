@@ -1,35 +1,61 @@
-# Vice Meridian Heatwave — contributor guide
+# Contributor guide
 
-## What this repository is
+## Repository purpose
 
-An entry for make.fun's "Make GTA 6" bounty (gta6-01): an open-world crime game played in a desktop browser, keyboard and mouse, built from static files under game/ with three.js vendored under game/vendor/. main.ts at the repository root is the entry hand-in: it copies game/ and screenshots/ to the output directory and writes dossier.json with the vendored make.fun library.
+This repository contains Vice Meridian: Heatwave, the public entry for make.fun bounty `gta6-01`. It is a static, offline-capable browser game rather than a server application. All gameplay code and procedural audiovisual assets live in `game/`; submission plumbing and capture tools live at the repository root and in `tools/`.
 
-## How to run the game
+## Run locally
 
-    node serve.ts
+Use Node 22 or later. There is no package installation, compilation, or asset download step.
 
-then open http://localhost:8080. The server needs Node 22 and the standard library only; nothing is installed and nothing loads over the network at run time.
+```sh
+node serve.ts
+```
 
-Controls: WASD to walk or drive, F to get into or out of a car, left click to shoot, ESC for the pause menu, and the title screen starts a new game or loads a save.
+Open http://localhost:8080 in a desktop Chromium, Firefox, or Safari browser with WebGL enabled. `node serve.ts --port 8090` selects another local port. The server binds to loopback and only serves files below `game/`.
 
-Screenshots are taken by the harness in tools/capture.js (Chromium over the Chrome DevTools Protocol, WebGL enabled). tools/determinism.js loads every shot scene twice and compares the simulation state the page exposes.
+## Controls
 
-## How the entry is built and verified
+WASD moves or drives, Shift sprints, Space applies the handbrake, E enters/exits cars, F fires, M opens the map, and Escape/P pauses. Mouse movement controls the chase camera after pointer capture. Start, pause, audio, save/load, mission recaps, and restart controls are available in the interface.
 
-- game/ holds index.html, the source modules under game/src/ and the vendored three.js minified build under game/vendor/. A file under a directory named vendor, or named *.min.js, is classed as vendored and never shown as source in the dossier.
-- screenshots/ holds 3 to 4 JPEG screenshots, each at most 256 KiB, long side at most 1280 px and short side at least 480 px, named with letters, digits, dot, underscore or dash only. shots.json names them, and screenshots/ must contain exactly those files.
-- Shot scenes are staged (not scripted input) by game/src/shots.js from the URL: `?shot=cover|driving|chase|mission&seed=N` runs the simulation forward deterministically, paints the frame and sets `window.__shotReady` for the harness. Reload the same URL and the same frame comes back.
-- Run the hand-in locally: `mkdir -p out && MAKEFUN_OUTPUT_DIR=out node main.ts` — it must exit 0 and write out/game, out/screenshots and out/dossier.json.
-- Run the competition's pre-submit checks: `node /root/makefun/gta6-kit-v20/gta6-01-kit/cli/makefun.mjs check --kit ... --repo ...` — every check must pass.
-- The dossier's text is capped at 163,840 UTF-8 bytes: keep the game's own source focused and well named; the vendor library is excluded from it.
+## Source layout
 
-## What is read-only
+- `game/index.html`: accessible interface, HUD, menu, map, and styles.
+- `game/src/config.js`: shared tuning and deterministic scenario definitions.
+- `game/src/random.js`, `math.js`: seeded generation and numeric helpers.
+- `game/src/city.js`: static city geometry, materials, collision blocks, and landmarks.
+- `game/src/vehicles.js`, `pedestrians.js`, `player.js`: vehicles, crowds, player control, police, and combat.
+- `game/src/missions.js`: story progression and objectives.
+- `game/src/render.js`, `hud.js`, `audio.js`, `input.js`, `save.js`: platform systems.
+- `game/src/shots.js`: fixed-step capture scenarios and exposed state snapshots.
+- `game/src/main.js`: composition root and simulation loop.
+- `game/vendor/three.module.min.js`: the only third-party runtime library.
 
-Do not modify vendor/makefun-game.ts, LICENSE or .makefun/owner.json — the gate rebuilds the dossier with vendor/makefun-game.ts and compares byte for byte. Everything else under game/, screenshots/, main.ts, serve.ts and shots.json is written for this entry and may be rewritten.
+Keep one clear responsibility per module. Import three.js with the relative specifier `../vendor/three.module.min.js` from files in `game/src/`. Runtime code must make no CDN or other network request. Preserve fixed-step simulation and seeded random behavior: a seed and frame sequence must reproduce the same state.
 
-## Conventions
+## Screenshots and capture
 
-- One clear job per source file, named for what it does (file and function names are what the dossier outline shows of the code).
-- All simulation randomness comes from a seeded RNG so screenshot scenes are reproducible per seed.
-- No network requests, no external assets: sounds are synthesised with Web Audio, textures are generated on canvas.
-- Everything written for this entry is original: no names, logos, characters, art, music or map from any commercial game.
+`shots.json` is the authoritative ordered list of the four JPEG captures. `screenshots/` must contain exactly those files. The first filename is the cover. Capture uses only Node standard-library HTTP/WebSocket code and Chromium's DevTools Protocol:
+
+```sh
+node serve.ts --port 8080
+node tools/capture.js --port 8080
+```
+
+The harness launches one headless Chromium instance, runs every scenario to its exposed ready flag, checks browser exceptions, writes a JSON Lines record to `capture/record.jsonl`, and closes the browser. Images must be at most 262144 bytes, at most 1280 pixels on the long side, and at least 480 pixels on the short side. Inspect every render after capture. `tools/determinism.js` repeats scenarios and reports simulation and pixel identity.
+
+## Submission build and verification
+
+```sh
+mkdir -p out
+MAKEFUN_OUTPUT_DIR=out node main.ts
+node /root/makefun/gta6-kit-l25/gta6-01-kit/cli/makefun.mjs check --kit /root/makefun/gta6-kit-l25/gta6-01-kit --repo .
+```
+
+The build copies `game/` and `screenshots/` into the selected output directory and invokes `buildDossier` from `vendor/makefun-game.ts`. Limits are 163840 dossier text bytes, at most four screenshots of 262144 bytes each, at most 993 game entries and 50331648 game bytes, and at most 1000 bytes per game-relative path. Keep `out/` and capture scratch uncommitted.
+
+## Read-only kit files
+
+Do not modify `vendor/makefun-game.ts`, `LICENSE`, or `.makefun/owner.json`. The scorer rebuilds and compares the dossier with its own identical library. The vendored three.js module is third-party library code; gameplay changes belong in `game/src/`, not in the vendor build.
+
+Do not commit generated output, browser profiles, capture scratch, credentials, personal information, or host-specific configuration.

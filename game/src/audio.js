@@ -1,125 +1,70 @@
-// Synthesised sound. Everything is generated with Web Audio oscillators and
-// noise buffers: no audio files, no network. Per-frame calls are wrapped in
-// try/catch by the render loop because a thrown audio error every frame
-// stops rendering.
-
-let ctx = null;
-function boot() {
-  if (ctx) return ctx;
-  try {
-    const C = window.AudioContext || window.webkitAudioContext;
-    if (!C) return null;
-    ctx = new C();
-    if (ctx.state === 'suspended') {
-      try { ctx.resume(); } catch { /* blocked without a gesture: audio stays off */ }
-    }
-  } catch {
-    ctx = null;
+// Procedural Web Audio score, vehicle, city and effects; no fetched sound files.
+export class AudioSystem {
+  constructor() { this.ctx = null; this.muted = false; this.started = false; this.lastShot = 0; }
+  start() {
+    if (this.started) { this.ctx?.resume().catch(() => {}); return; }
+    try {
+      this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+      const c = this.ctx;
+      this.master = c.createGain(); this.master.gain.value = this.muted ? 0 : 0.42;
+      this.master.connect(c.destination);
+      this.music = c.createGain(); this.music.gain.value = 0.055; this.music.connect(this.master);
+      this.engine = c.createOscillator(); this.engine.type = 'sawtooth'; this.engine.frequency.value = 45;
+      this.engineGain = c.createGain(); this.engineGain.gain.value = 0;
+      const filter = c.createBiquadFilter(); filter.type = 'lowpass'; filter.frequency.value = 280;
+      this.engine.connect(filter); filter.connect(this.engineGain); this.engineGain.connect(this.master); this.engine.start();
+      this.siren = c.createOscillator(); this.siren.type = 'square';
+      this.sirenGain = c.createGain(); this.sirenGain.gain.value = 0;
+      this.siren.connect(this.sirenGain); this.sirenGain.connect(this.master); this.siren.start();
+      const noise = c.createBuffer(1, c.sampleRate * 2, c.sampleRate);
+      const channel = noise.getChannelData(0);
+      let state = 0x6712ab91;
+      for (let i = 0; i < channel.length; i++) { state ^= state << 13; state ^= state >>> 17; state ^= state << 5; channel[i] = ((state >>> 0) / 2147483648 - 1) * 0.4; }
+      this.wind = c.createBufferSource(); this.wind.buffer = noise; this.wind.loop = true;
+      this.windGain = c.createGain(); this.windGain.gain.value = 0.025;
+      this.wind.connect(this.windGain); this.windGain.connect(this.master); this.wind.start();
+      this.started = true;
+      this.scheduled = 0;
+    } catch { this.started = false; }
   }
-  return ctx;
-}
-
-let master = null;
-let engine = null;      // player car engine drone
-let siren = null;       // police siren tone
-let noiseBuffer = null; // crashes, shots, footsteps
-
-export function createAudio() {
-  const c = boot();
-  if (!c) return { tick() {}, engine() {}, siren() {}, crash() {}, shot() {}, step() {} };
-
-  master = c.createGain();
-  master.connect(c.destination);
-  master.gain.value = 0.35;
-
-  const engineOsc = c.createOscillator();
-  engineOsc.type = 'sawtooth';
-  const engineGain = c.createGain();
-  engineOsc.connect(engineGain);
-  engineGain.connect(master);
-  engineOsc.frequency.setValueAtTime(92, c.currentTime);
-  engineOsc.start();
-  engine = { osc: engineOsc, gain: engineGain, active: false };
-
-  const sirenOsc = c.createOscillator();
-  sirenOsc.type = 'square';
-  const sirenGain = c.createGain();
-  sirenGain.gain.value = 0;
-  sirenOsc.connect(sirenGain);
-  sirenGain.connect(master);
-  sirenOsc.frequency.setValueAtTime(880, c.currentTime);
-  sirenOsc.start();
-  siren = { osc: sirenOsc, gain: sirenGain, high: true, next: c.currentTime + 0.4 };
-
-  const noiseLen = Math.floor(c.sampleRate * 0.5);
-  const noise = c.createBuffer(1, noiseLen, c.sampleRate);
-  const data = noise.getChannelData(0);
-  let seed = 0x9e3779b9;
-  for (let i = 0; i < noiseLen; i++) {
-    // Seeded noise, so the same run sounds the same every time.
-    seed = (seed * 1664525 + 1013904223) >>> 0;
-    data[i] = ((seed >>> 8) / 0xffffff - 0.5) * 0.6;
+  tone(frequency, duration = 0.12, volume = 0.13, type = 'sine', delay = 0) {
+    if (!this.ctx || this.muted) return;
+    try {
+      const t = this.ctx.currentTime + delay;
+      const osc = this.ctx.createOscillator(), gain = this.ctx.createGain();
+      osc.type = type; osc.frequency.setValueAtTime(frequency, t);
+      gain.gain.setValueAtTime(0.001, t); gain.gain.exponentialRampToValueAtTime(volume, t + 0.015);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + duration);
+      osc.connect(gain); gain.connect(this.master); osc.start(t); osc.stop(t + duration + 0.02);
+    } catch { /* Audio never interrupts simulation. */ }
   }
-  noiseBuffer = noise;
-
-  let lastSpeed = 0;
-
-  /** One short seeded-noise burst through its own gain: crash, shot, footstep. */
-  function burst(gain, seconds, oscHz) {
-    const src = c.createBufferSource();
-    src.buffer = noiseBuffer;
-    const g = c.createGain();
-    g.gain.value = gain;
-    src.connect(g);
-    g.connect(master);
-    src.start();
-    try { src.stop(c.currentTime + seconds); } catch { /* already stopped */ }
-    if (oscHz) {
-      const osc = c.createOscillator();
-      const og = c.createGain();
-      og.gain.setValueAtTime(gain, c.currentTime);
-      try { og.gain.exponentialRampToValueAtTime(0.0001, c.currentTime + seconds); } catch { /* ignore */ }
-      osc.frequency.setValueAtTime(oscHz, c.currentTime);
-      osc.connect(og);
-      og.connect(master);
-      osc.start();
-      try { osc.stop(c.currentTime + seconds); } catch { /* already stopped */ }
-    }
+  effect(name) {
+    if (name === 'shot') this.tone(95, 0.09, 0.22, 'square');
+    if (name === 'enter') { this.tone(190, 0.09, 0.1); this.tone(285, 0.12, 0.08, 'sine', 0.07); }
+    if (name === 'objective') [440, 554, 659, 880].forEach((f, i) => this.tone(f, 0.32, 0.08, 'sine', i * 0.1));
+    if (name === 'hit') this.tone(58, 0.18, 0.16, 'sawtooth');
+    if (name === 'cash') { this.tone(880, 0.16, 0.09); this.tone(1320, 0.24, 0.08, 'sine', 0.08); }
   }
-
-  return {
-    tick(playerCar, policeCars, shooting, footsteps) {
-      const now = c.currentTime;
-      // Player-car engine drone: pitch and loudness follow RPM-ish speed.
-      if (engine) {
-        const rpm = playerCar ? Math.min(1, Math.abs(playerCar.speed) / 26) : 0;
-        const targetFreq = 70 + rpm * 140;
-        try { engine.osc.frequency.setTargetAtTime(targetFreq, now, 0.05); } catch { /* ignore */ }
-        const targetGain = playerCar ? 0.015 + rpm * 0.05 : 0.002;
-        try { engine.gain.gain.setTargetAtTime(targetGain, now, 0.05); } catch { /* ignore */ }
-        engine.active = playerCar ? true : engine.active;
-        // A sudden loss of speed is a crash.
-        const speed = playerCar ? Math.abs(playerCar.speed) : 0;
-        if (lastSpeed - speed > 9) burst(0.16, 0.4);
-        lastSpeed = speed;
+  update(speed, wanted, active) {
+    if (!this.started || !this.ctx) return;
+    try {
+      const t = this.ctx.currentTime;
+      this.engine.frequency.setTargetAtTime(42 + Math.abs(speed) * 3.5, t, 0.08);
+      this.engineGain.gain.setTargetAtTime(active ? 0.045 + Math.abs(speed) * 0.002 : 0, t, 0.1);
+      this.siren.frequency.setTargetAtTime(690 + Math.sin(t * 8) * 190, t, 0.02);
+      this.sirenGain.gain.setTargetAtTime(wanted > 0 ? Math.min(0.045, wanted * 0.012) : 0, t, 0.12);
+      this.master.gain.setTargetAtTime(this.muted ? 0 : 0.42, t, 0.04);
+      if (t > this.scheduled) {
+        const notes = [110, 130.81, 146.83, 164.81, 196];
+        const n = notes[Math.floor(t / 2) % notes.length];
+        this.tone(n, 1.85, 0.05, 'triangle');
+        this.tone(n * 2, 0.45, 0.026, 'sine', 0.4);
+        this.scheduled = t + 1.9;
       }
-      // Police siren: one shared wailing voice while any cruiser is out.
-      if (siren) {
-        const active = policeCars.length > 0;
-        try { siren.gain.gain.setTargetAtTime(active ? 0.14 : 0, now, 0.05); } catch { /* ignore */ }
-        if (active && now >= siren.next) {
-          siren.high = !siren.high;
-          try { siren.osc.frequency.setTargetAtTime(siren.high ? 1040 : 740, now, 0.1); } catch { /* ignore */ }
-          siren.next = now + 0.42;
-        }
-      }
-      if (shooting) burst(0.1, 0.12, 780);
-      if (footsteps) burst(0.03, 0.06);
-    },
-    destroy() {
-      try { master.gain.setTargetAtTime(0, c.currentTime, 0.2); } catch { /* ignore */ }
-      try { engine.osc.stop(); } catch { /* already stopped */ }
-      try { siren.osc.stop(); } catch { /* already stopped */ }
-    },
-  };
+    } catch { /* setTargetAtTime is guarded for restricted audio contexts. */ }
+  }
+  setMuted(value) {
+    this.muted = value;
+    if (this.ctx && this.master) this.master.gain.setTargetAtTime(value ? 0 : 0.42, this.ctx.currentTime, 0.03);
+  }
 }
